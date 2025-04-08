@@ -195,11 +195,15 @@ class ChatUI:
             # Clear the entire input line first
             self.screen.move(height - 2, 0)
             self.screen.clrtoeol()
+            # Draw separator line
+            self.screen.move(height - input_height - 1, 0)
+            self.screen.clrtoeol()
+            self.screen.addstr(height - input_height - 1, 0, "-" * (width - 1))
             # Now add our input content
-            self.input_pad.addstr(0, 0, prompt + self.input_buffer)
-            self.input_pad.noutrefresh(0, 0, height - 2, 0, height - 1, width - 1)
+            self.screen.addstr(height - 2, 0, prompt + self.input_buffer)
             # Position cursor
             self.screen.move(height - 2, len(prompt) + self.cursor_x)
+            self.screen.noutrefresh()
             curses.doupdate()  # Update screen only once
         except curses.error:
             pass
@@ -213,51 +217,40 @@ class ChatUI:
         input_height = 2
         message_area_height = height - input_height - 1
         
-        # Only redraw messages if needed
-        if force or self.needs_message_refresh or len(self.messages) != self.last_message_count:
-            self.messages_pad.erase()
-            current_line = 0
-            
-            # Display messages from bottom up
-            for msg in reversed(self.messages):
-                lines_needed = len(msg["lines"])
-                if current_line + lines_needed > message_area_height:
-                    break
-                    
-                # Display message lines
-                for line in reversed(msg["lines"]):
-                    if current_line >= message_area_height:
-                        break
-                    try:
-                        self.messages_pad.addstr(
-                            message_area_height - 1 - current_line,
-                            0,
-                            line[:width-1]
-                        )
-                    except curses.error:
-                        pass
-                    current_line += 1
-                    
-            self.last_message_count = len(self.messages)
-            
         try:
+            # Only redraw messages if needed
+            if force or self.needs_message_refresh or len(self.messages) != self.last_message_count:
+                self.messages_pad.erase()
+                current_line = 0
+                
+                # Display messages from bottom up
+                for msg in reversed(self.messages):
+                    lines_needed = len(msg["lines"])
+                    if current_line + lines_needed > message_area_height:
+                        break
+                        
+                    # Display message lines
+                    for line in reversed(msg["lines"]):
+                        if current_line >= message_area_height:
+                            break
+                        try:
+                            self.messages_pad.addstr(
+                                message_area_height - 1 - current_line,
+                                0,
+                                line[:width-1]
+                            )
+                        except curses.error:
+                            pass
+                        current_line += 1
+                        
+                self.last_message_count = len(self.messages)
+                
             # Prepare all updates without refreshing
             self.messages_pad.noutrefresh(0, 0, 0, 0, message_area_height - 1, width - 1)
             
-            # Draw separator line in the correct position
-            self.screen.move(height - input_height - 1, 0)
-            self.screen.clrtoeol()
-            self.screen.addstr(height - input_height - 1, 0, "-" * (width - 1))
-            
-            # Clear input area
-            self.screen.move(height - 2, 0)
-            self.screen.clrtoeol()
-            
-            self.screen.noutrefresh()
+            # Always refresh input area to keep it visible
             self._refresh_input()
             
-            # Update screen all at once
-            curses.doupdate()
         except curses.error:
             pass
             

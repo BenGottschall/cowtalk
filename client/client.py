@@ -36,9 +36,17 @@ class CowtalkClient:
     def send_message(self, message_dict):
         """Send a message to the server"""
         try:
-            # Encrypt message content if it's a chat message
-            if message_dict.get("type") == "message" and self.encryption:
-                message_dict["content"] = self.encryption.encrypt_message(message_dict["content"])
+            # Add message to UI immediately if it's a chat message
+            if message_dict.get("type") == "message":
+                # Add an unencrypted copy to the UI
+                self.ui.add_message({
+                    "type": "message",
+                    "username": message_dict["username"],
+                    "content": message_dict["content"]
+                })
+                # Then encrypt for sending if needed
+                if self.encryption:
+                    message_dict["content"] = self.encryption.encrypt_message(message_dict["content"])
             message_json = json.dumps(message_dict) + "\n"  # Add newline as message delimiter
             self.socket.send(message_json.encode('utf-8'))
         except Exception as e:

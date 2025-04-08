@@ -26,5 +26,5 @@ class MessageEncryption:
         try:
             return self.fernet.decrypt(encrypted_message.encode()).decode()
         except Exception as e:
-            print(f"Failed to decrypt message: {e}")
+            # print(f"Failed to decrypt message: {e}")
             return None 

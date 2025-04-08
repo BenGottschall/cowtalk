@@ -10,7 +10,7 @@ lock = threading.Lock()
 
 def broadcast(message_dict, sender_socket=None):
     """Send a message to all clients except the sender"""
-    message_json = json.dumps(message_dict)
+    message_json = json.dumps(message_dict) + "\n"  # Add newline as message delimiter
     with lock:
         for client_sock in clients:
             if client_sock != sender_socket:
@@ -48,47 +48,24 @@ def handle_client(client_sock, addr):
                 
             buffer += data.decode('utf-8')
             
-            try:
-                # Try to find complete JSON messages
-                while buffer:
-                    try:
-                        message = json.loads(buffer)
-                        # If successful, we found a complete message
-                        buffer = ""
-                        
-                        if message.get("type") == "message":
-                            username = message.get("username", "Anonymous")
-                            content = message.get("content", "")
-                            print(f"{username}: {content}")
-                            # Forward to other clients
-                            broadcast(message, sender_socket=client_sock)
-                        elif message.get("type") == "typing_status":
-                            # Forward typing status to other clients
-                            broadcast(message, sender_socket=client_sock)
-                        break
-                    except json.JSONDecodeError as e:
-                        # If we find a complete message followed by the start of another
-                        if buffer.find("}{") != -1:
-                            split_idx = buffer.find("}{") + 1
-                            first_message = buffer[:split_idx]
-                            buffer = buffer[split_idx:]
-                            
-                            message = json.loads(first_message)
-                            if message.get("type") == "message":
-                                username = message.get("username", "Anonymous")
-                                content = message.get("content", "")
-                                print(f"{username}: {content}")
-                                # Forward to other clients
-                                broadcast(message, sender_socket=client_sock)
-                            elif message.get("type") == "typing_status":
-                                # Forward typing status to other clients
-                                broadcast(message, sender_socket=client_sock)
-                        else:
-                            # If we can't parse it yet, wait for more data
-                            break
-            except Exception as e:
-                print(f"Error processing message: {e}")
-                buffer = ""  # Clear buffer on error
+            # Split buffer into messages by newline
+            while '\n' in buffer:
+                message_json, buffer = buffer.split('\n', 1)
+                try:
+                    message = json.loads(message_json)
+                    if message.get("type") == "message":
+                        username = message.get("username", "Anonymous")
+                        content = message.get("content", "")
+                        print(f"{username}: {content}")
+                        # Forward to other clients
+                        broadcast(message, sender_socket=client_sock)
+                    elif message.get("type") == "typing_status":
+                        # Forward typing status to other clients
+                        broadcast(message, sender_socket=client_sock)
+                except json.JSONDecodeError as e:
+                    print(f"Error decoding message: {e}")
+                except Exception as e:
+                    print(f"Error processing message: {e}")
                 
     except Exception as e:
         print(f"Error: {e}")

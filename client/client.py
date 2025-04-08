@@ -36,23 +36,17 @@ class CowtalkClient:
     def send_message(self, message_dict):
         """Send a message to the server"""
         try:
-            # Add message to UI immediately if it's a chat message
-            if message_dict.get("type") == "message":
-                # Add an unencrypted copy to the UI
-                self.ui.add_message({
-                    "type": "message",
-                    "username": message_dict["username"],
-                    "content": message_dict["content"]
-                })
-                # Then encrypt for sending
-                if self.encryption:
-                    message_dict["content"] = self.encryption.encrypt_message(message_dict["content"])
-            self.socket.send(json.dumps(message_dict).encode('utf-8'))
+            # Encrypt message content if it's a chat message
+            if message_dict.get("type") == "message" and self.encryption:
+                message_dict["content"] = self.encryption.encrypt_message(message_dict["content"])
+            message_json = json.dumps(message_dict) + "\n"  # Add newline as message delimiter
+            self.socket.send(message_json.encode('utf-8'))
         except Exception as e:
             print(f"Failed to send message: {e}")
             
     def receive_messages(self):
         """Continuously receive messages from the server"""
+        buffer = ""
         while True:
             try:
                 data = self.socket.recv(4096)
@@ -64,27 +58,50 @@ class CowtalkClient:
                     })
                     break
                     
-                message = json.loads(data.decode('utf-8'))
-                # Only process messages that aren't our own (since we already displayed those)
-                if message.get("username") != self.username:
-                    # Decrypt message content if it's a regular chat message (not a system message)
-                    if (message.get("type") == "message" and 
-                        message.get("username") != "System" and 
-                        self.encryption):
-                        encrypted_content = message.get("content")
-                        if encrypted_content:
-                            decrypted_content = self.encryption.decrypt_message(encrypted_content)
-                            if decrypted_content:
-                                message["content"] = decrypted_content
-                            else:
-                                message["content"] = "[Encrypted message - cannot decrypt]"
-                    
-                    self.ui.add_message(message)
+                buffer += data.decode('utf-8')
+                
+                # Process complete messages
+                while '\n' in buffer:
+                    message_json, buffer = buffer.split('\n', 1)
+                    try:
+                        message = json.loads(message_json)
+                        # Only process messages that aren't our own
+                        if message.get("username") != self.username:
+                            # Decrypt message content if it's a regular chat message (not a system message)
+                            if (message.get("type") == "message" and 
+                                message.get("username") != "System" and 
+                                self.encryption):
+                                encrypted_content = message.get("content")
+                                if encrypted_content:
+                                    try:
+                                        decrypted_content = self.encryption.decrypt_message(encrypted_content)
+                                        if decrypted_content:
+                                            message["content"] = decrypted_content
+                                        else:
+                                            message["content"] = "[Encrypted message - cannot decrypt]"
+                                    except Exception as e:
+                                        message["content"] = "[Encrypted message - cannot decrypt]"
+                            
+                            self.ui.add_message(message)
+                    except json.JSONDecodeError as e:
+                        # Only show decode errors for non-typing messages (to reduce noise)
+                        if "typing_status" not in message_json:
+                            self.ui.add_message({
+                                "type": "message",
+                                "username": "System",
+                                "content": f"Error decoding message: {e}"
+                            })
+                    except Exception as e:
+                        self.ui.add_message({
+                            "type": "message",
+                            "username": "System",
+                            "content": f"Error processing message: {e}"
+                        })
             except Exception as e:
                 self.ui.add_message({
                     "type": "message",
                     "username": "System",
-                    "content": f"Error receiving message: {e}"
+                    "content": f"Connection error: {e}"
                 })
                 break
                 

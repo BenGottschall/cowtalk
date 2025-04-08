@@ -3,6 +3,8 @@ import threading
 import sys
 import subprocess
 import json
+from getpass import getpass
+from crypto_utils import MessageEncryption
 
 class CowtalkClient:
     def __init__(self, host='localhost', port=9999):
@@ -10,12 +12,16 @@ class CowtalkClient:
         self.port = port
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.username = None
+        self.encryption = None
         
     def connect(self):
         """Connect to the server"""
         try:
             self.socket.connect((self.host, self.port))
             self.username = input("Enter your username: ")
+            # Initialize encryption with a password
+            password = getpass("Enter encryption password: ")
+            self.encryption = MessageEncryption(password)
             # Send username to server
             self.send_message({"type": "connect", "username": self.username})
             return True
@@ -26,6 +32,9 @@ class CowtalkClient:
     def send_message(self, message_dict):
         """Send a message to the server"""
         try:
+            # Encrypt message content if it's a chat message
+            if message_dict.get("type") == "message" and self.encryption:
+                message_dict["content"] = self.encryption.encrypt_message(message_dict["content"])
             self.socket.send(json.dumps(message_dict).encode('utf-8'))
         except Exception as e:
             print(f"Failed to send message: {e}")
@@ -40,6 +49,17 @@ class CowtalkClient:
                     break
                     
                 message = json.loads(data.decode('utf-8'))
+                # Only decrypt if it's a regular chat message (not a system message)
+                if (message.get("type") == "message" and 
+                    message.get("username") != "System" and 
+                    self.encryption):
+                    encrypted_content = message.get("content")
+                    if encrypted_content:
+                        decrypted_content = self.encryption.decrypt_message(encrypted_content)
+                        if decrypted_content:
+                            message["content"] = decrypted_content
+                        else:
+                            message["content"] = "[Encrypted message - cannot decrypt]"
                 self.display_message(message)
             except Exception as e:
                 print(f"Error receiving message: {e}")

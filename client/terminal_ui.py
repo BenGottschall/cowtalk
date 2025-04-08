@@ -188,14 +188,13 @@ class ChatUI:
     def _refresh_input(self):
         """Refresh just the input area"""
         height, width = self.screen.getmaxyx()
+        input_height = 2
         self.input_pad.erase()
         prompt = "Message: "
         try:
             # Clear the entire input line first
             self.screen.move(height - 2, 0)
             self.screen.clrtoeol()
-            # Draw the separator again to ensure it's clean
-            self.screen.addstr(height - 2, 0, "-" * (width - 1))
             # Now add our input content
             self.input_pad.addstr(0, 0, prompt + self.input_buffer)
             self.input_pad.noutrefresh(0, 0, height - 2, 0, height - 1, width - 1)
@@ -242,14 +241,18 @@ class ChatUI:
             self.last_message_count = len(self.messages)
             
         try:
-            # Clear the input area completely
+            # Prepare all updates without refreshing
+            self.messages_pad.noutrefresh(0, 0, 0, 0, message_area_height - 1, width - 1)
+            
+            # Draw separator line in the correct position
+            self.screen.move(height - input_height - 1, 0)
+            self.screen.clrtoeol()
+            self.screen.addstr(height - input_height - 1, 0, "-" * (width - 1))
+            
+            # Clear input area
             self.screen.move(height - 2, 0)
             self.screen.clrtoeol()
             
-            # Prepare all updates without refreshing
-            self.messages_pad.noutrefresh(0, 0, 0, 0, message_area_height - 1, width - 1)
-            # Ensure separator is clean
-            self.screen.addstr(height - input_height - 1, 0, "-" * (width - 1))
             self.screen.noutrefresh()
             self._refresh_input()
             

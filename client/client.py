@@ -5,6 +5,7 @@ import json
 from getpass import getpass
 from crypto_utils import MessageEncryption
 from terminal_ui import ChatUI
+import time
 
 class CowtalkClient:
     def __init__(self, host='localhost', port=9999):
@@ -14,6 +15,8 @@ class CowtalkClient:
         self.username = None
         self.encryption = None
         self.ui = ChatUI()
+        self.last_typing_update = 0
+        self.typing_update_delay = 0.1  # Reduce to 100ms for more responsive updates
         
     def connect(self):
         """Connect to the server"""
@@ -85,6 +88,21 @@ class CowtalkClient:
                 })
                 break
                 
+    def send_typing_status(self, is_typing=True):
+        """Send typing status to server"""
+        try:
+            current_time = time.time()
+            # Always send if state changes to false, otherwise respect rate limit
+            if not is_typing or current_time - self.last_typing_update >= self.typing_update_delay:
+                self.last_typing_update = current_time
+                self.send_message({
+                    "type": "typing_status",
+                    "username": self.username,
+                    "is_typing": is_typing
+                })
+        except Exception as e:
+            pass  # Ignore typing status errors
+            
     def start(self):
         """Start the client application"""
         if not self.connect():
@@ -100,20 +118,35 @@ class CowtalkClient:
             receive_thread.start()
             
             # Main input loop
+            last_typing_state = False
             while True:
                 message = self.ui.get_input()
+                current_typing_state = self.ui.is_typing()
+                
+                # Send typing status only when state changes
+                if current_typing_state != last_typing_state:
+                    self.send_typing_status(current_typing_state)
+                    last_typing_state = current_typing_state
+                
                 if message is not None:
                     if message.lower() == '/exit':
+                        # Send not typing status before exit
+                        self.send_typing_status(False)
                         break
                     self.send_message({
                         "type": "message",
                         "username": self.username,
                         "content": message
                     })
+                    # Send not typing status after sending message
+                    self.send_typing_status(False)
+                    last_typing_state = False
                     
         except KeyboardInterrupt:
             pass
         finally:
+            # Ensure we send not typing status on exit
+            self.send_typing_status(False)
             self.ui.stop()
             self.socket.close()
             

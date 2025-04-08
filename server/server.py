@@ -53,6 +53,9 @@ def handle_client(client_sock, addr):
                 
                 # Forward to other clients
                 broadcast(message, sender_socket=client_sock)
+            elif message.get("type") == "typing_status":
+                # Forward typing status to other clients
+                broadcast(message, sender_socket=client_sock)
     except Exception as e:
         print(f"Error: {e}")
     finally:

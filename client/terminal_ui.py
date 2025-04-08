@@ -23,6 +23,9 @@ class ChatUI:
         self.last_message_count = 0
         self.last_message_time = 0
         self.message_delay = 0.5  # 500ms delay between messages
+        self.typing_users = {}  # Track who is typing
+        self.last_input_time = 0
+        self.typing_timeout = 0.5  # Reduce timeout to 500ms
         
     def start(self):
         """Initialize and start the UI"""
@@ -36,7 +39,7 @@ class ChatUI:
         curses.curs_set(1)  # Show cursor
         self.screen.keypad(True)
         
-        # Enable terminal buffering
+        # Enable terminal buffering with shorter delay
         curses.halfdelay(1)  # 100ms input timeout
         
         # Initialize pads
@@ -80,6 +83,23 @@ class ChatUI:
         except FileNotFoundError:
             return text.split('\n')
             
+    def is_typing(self):
+        """Check if the user is currently typing"""
+        # Only consider typing if there are actual characters in the buffer
+        return len(self.input_buffer.strip()) > 0
+        
+    def _get_typing_indicator(self, username):
+        """Get cowsay typing indicator"""
+        try:
+            result = subprocess.run(
+                ["cowsay", f"{username} is typing..."],
+                capture_output=True,
+                text=True
+            )
+            return result.stdout.split('\n')
+        except FileNotFoundError:
+            return [f"{username} is typing..."]
+            
     def _process_messages(self):
         """Process messages from queue and update display"""
         while True:
@@ -88,9 +108,23 @@ class ChatUI:
                 if message is None:
                     break
                     
+                if message.get("type") == "typing_status":
+                    username = message.get("username")
+                    is_typing = message.get("is_typing", False)
+                    if is_typing:
+                        self.typing_users[username] = time.time()
+                    else:
+                        self.typing_users.pop(username, None)
+                    self.needs_message_refresh = True
+                    self.refresh_screen()
+                    continue
+                    
                 timestamp = datetime.now().strftime("%H:%M:%S")
                 sender = message.get("username", "Anonymous")
                 content = message.get("content", "")
+                
+                # Remove typing indicator if user sends a message
+                self.typing_users.pop(sender, None)
                 
                 # Format message with timestamp
                 formatted = f"{sender}: {content}"
@@ -223,7 +257,31 @@ class ChatUI:
                 self.messages_pad.erase()
                 current_line = 0
                 
-                # Display messages from bottom up
+                # First display typing indicators
+                current_time = time.time()
+                for username, last_time in list(self.typing_users.items()):
+                    # Remove typing status if too old
+                    if current_time - last_time > self.typing_timeout:
+                        del self.typing_users[username]
+                        continue
+                        
+                    typing_lines = self._get_typing_indicator(username)
+                    lines_needed = len(typing_lines)
+                    if current_line + lines_needed <= message_area_height:
+                        for line in reversed(typing_lines):
+                            if current_line >= message_area_height:
+                                break
+                            try:
+                                self.messages_pad.addstr(
+                                    message_area_height - 1 - current_line,
+                                    0,
+                                    line[:width-1]
+                                )
+                            except curses.error:
+                                pass
+                            current_line += 1
+                            
+                # Then display messages
                 for msg in reversed(self.messages):
                     lines_needed = len(msg["lines"])
                     if current_line + lines_needed > message_area_height:

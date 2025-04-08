@@ -4,6 +4,7 @@ from datetime import datetime
 import threading
 from queue import Queue
 import textwrap
+import time
 
 class ChatUI:
     def __init__(self):
@@ -20,6 +21,8 @@ class ChatUI:
         self.needs_resize = False
         self.needs_message_refresh = False
         self.last_message_count = 0
+        self.last_message_time = 0
+        self.message_delay = 0.5  # 500ms delay between messages
         
     def start(self):
         """Initialize and start the UI"""
@@ -150,11 +153,24 @@ class ChatUI:
                 self.cursor_x += 1
                 self._refresh_input()
         elif ch == 10:  # Enter key
+            # Check if enough time has passed since last message
+            current_time = time.time()
+            if current_time - self.last_message_time < self.message_delay:
+                # If not enough time has passed, ignore this message
+                return None
+                
             message = self.input_buffer
-            self.input_buffer = ""
-            self.cursor_x = 0
-            self._refresh_input()
-            return message
+            if message.strip():  # Only send non-empty messages
+                self.last_message_time = current_time
+                self.input_buffer = ""
+                self.cursor_x = 0
+                self._refresh_input()
+                return message
+            else:
+                # Clear empty message without updating last_message_time
+                self.input_buffer = ""
+                self.cursor_x = 0
+                self._refresh_input()
         elif ch >= 32 and ch < 127:  # Printable characters
             self.input_buffer = (
                 self.input_buffer[:self.cursor_x] + 
@@ -175,6 +191,12 @@ class ChatUI:
         self.input_pad.erase()
         prompt = "Message: "
         try:
+            # Clear the entire input line first
+            self.screen.move(height - 2, 0)
+            self.screen.clrtoeol()
+            # Draw the separator again to ensure it's clean
+            self.screen.addstr(height - 2, 0, "-" * (width - 1))
+            # Now add our input content
             self.input_pad.addstr(0, 0, prompt + self.input_buffer)
             self.input_pad.noutrefresh(0, 0, height - 2, 0, height - 1, width - 1)
             # Position cursor
@@ -220,8 +242,13 @@ class ChatUI:
             self.last_message_count = len(self.messages)
             
         try:
+            # Clear the input area completely
+            self.screen.move(height - 2, 0)
+            self.screen.clrtoeol()
+            
             # Prepare all updates without refreshing
             self.messages_pad.noutrefresh(0, 0, 0, 0, message_area_height - 1, width - 1)
+            # Ensure separator is clean
             self.screen.addstr(height - input_height - 1, 0, "-" * (width - 1))
             self.screen.noutrefresh()
             self._refresh_input()
